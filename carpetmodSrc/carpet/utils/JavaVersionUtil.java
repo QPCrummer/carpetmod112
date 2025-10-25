@@ -33,8 +33,10 @@ public final class JavaVersionUtil {
         } catch (NoSuchFieldException e) {
             throw new RuntimeException("Could not find field", e);
         }
+
         if (field.getType() != fieldType) {
-            throw new RuntimeException("Field has wrong type, expected \"" + fieldType.getName() + "\", got \"" + field.getType().getName() + "\"");
+            throw new RuntimeException("Field has wrong type, expected \"" + fieldType.getName() +
+                    "\", got \"" + field.getType().getName() + "\"");
         }
         if (fieldType.isPrimitive()) {
             throw new RuntimeException("objectFieldAccessor does not work for primitive field types");
@@ -42,18 +44,18 @@ public final class JavaVersionUtil {
 
         try {
             field.setAccessible(true);
-        } catch (RuntimeException e) { // InaccessibleObjectException
-            if (JAVA_VERSION <= 8) {
-                throw e;
-            }
+        } catch (RuntimeException e) { // InaccessibleObjectException on Java 9+
+            // Fallback to Unsafe if you still want that path
             long fieldOffset = UnsafeFieldAccessor.unsafe.objectFieldOffset(field);
             return new UnsafeFieldAccessor<>(ownerClass, fieldOffset);
         }
 
         try {
-            return new MethodHandleFieldAccessor<>(MethodHandles.lookup().unreflectGetter(field));
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
+            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(ownerClass, MethodHandles.lookup());
+            return new MethodHandleFieldAccessor<>(lookup.unreflectGetter(field));
+        } catch (IllegalAccessException | InaccessibleObjectException e) {
+            long fieldOffset = UnsafeFieldAccessor.unsafe.objectFieldOffset(field);
+            return new UnsafeFieldAccessor<>(ownerClass, fieldOffset);
         }
     }
 
